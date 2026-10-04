@@ -71,3 +71,7 @@ pub fn count_files(dir: &Path, exts: &[&str]) -> usize {
         .filter(|p| p.is_file() && !is_hidden(p) && has_ext(p, exts))
         .count()
 }
+
+pub fn plural(n: usize, word: &str) -> String {
+    format!("{n} {word}{}", if n == 1 { "" } else { "s" })
+}

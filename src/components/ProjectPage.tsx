@@ -246,7 +246,7 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
         <div className="progress-fill" style={{ width: `${pct}%` }} />
       </div>
       <p className="muted">
-        Converting {done} of {total}… You can leave this page; it keeps going.
+        Converting {done} of {total}… You can close this window — Pixieflow keeps going and lets you know when it's done.
       </p>
     </div>
   );

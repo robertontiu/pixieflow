@@ -1,3 +1,4 @@
+mod background;
 mod convert;
 mod files;
 mod project;
@@ -13,15 +14,21 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use convert::{ConvertProgress, ConvertSummary};
+use files::plural;
 use project::{Project, ProjectDraft, ProjectView, Store};
 use selection::SelectionSummary;
 
 struct AppState {
     store: Mutex<Store>,
     converting: Mutex<HashSet<String>>,
+    applying: Mutex<HashSet<String>>,
 }
 
 impl AppState {
+    fn busy(&self) -> bool {
+        !self.converting.lock().unwrap().is_empty() || !self.applying.lock().unwrap().is_empty()
+    }
+
     fn view(&self, project: Project) -> ProjectView {
         let converting = self.converting.lock().unwrap().contains(&project.id);
         ProjectView::new(project, converting)
@@ -87,45 +94,73 @@ async fn convert_project(app: AppHandle, state: State<'_, AppState>, id: String)
     if !state.converting.lock().unwrap().insert(id.clone()) {
         return Err("This project is already being converted.".into());
     }
-    let project_id = id.clone();
+    let (name, project_id, emitter) = (project.name.clone(), id.clone(), app.clone());
     let result = tauri::async_runtime::spawn_blocking(move || {
         convert::convert(&project.source_dir, &project.jpg_dir, |done, total| {
             let progress = ConvertProgress { project_id: project_id.clone(), done, total };
-            let _ = app.emit("convert-progress", progress);
+            let _ = emitter.emit("convert-progress", progress);
         })
     })
     .await
     .map_err(|e| e.to_string())
-    .and_then(|r| r);
+    .and_then(|r| r)
+    .and_then(|summary| {
+        let mut store = state.store.lock().unwrap();
+        store.get_mut(&id)?.last_convert = Some(summary.clone());
+        store.save()?;
+        Ok(summary)
+    });
     state.converting.lock().unwrap().remove(&id);
 
-    let summary = result?;
-    let mut store = state.store.lock().unwrap();
-    store.get_mut(&id)?.last_convert = Some(summary.clone());
-    store.save()?;
-    Ok(summary)
+    match &result {
+        Ok(s) => {
+            let mut body = format!("{name}: {} ready to upload to Pixieset.", plural(s.converted + s.already_done, "photo"));
+            if !s.failed.is_empty() {
+                body += &format!(" {} couldn't be converted.", plural(s.failed.len(), "photo"));
+            }
+            background::job_finished(&app, "Photos converted", &body);
+        }
+        Err(e) => background::job_finished(&app, "Conversion stopped", &format!("{name}: {e}")),
+    }
+    result
 }
 
 #[tauri::command]
-async fn apply_selection(state: State<'_, AppState>, id: String, csv_path: PathBuf) -> Result<SelectionSummary, String> {
+async fn apply_selection(app: AppHandle, state: State<'_, AppState>, id: String, csv_path: PathBuf) -> Result<SelectionSummary, String> {
     let project = state.project(&id)?;
-    let summary = tauri::async_runtime::spawn_blocking(move || {
+    if !state.applying.lock().unwrap().insert(id.clone()) {
+        return Err("This selection is already being copied.".into());
+    }
+    let name = project.name.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
         selection::apply(&project.source_dir, &project.selection_dir, &csv_path)
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())
+    .and_then(|r| r)
+    .and_then(|summary| {
+        let mut store = state.store.lock().unwrap();
+        store.get_mut(&id)?.last_selection = Some(summary.clone());
+        store.save()?;
+        Ok(summary)
+    });
+    state.applying.lock().unwrap().remove(&id);
 
-    let mut store = state.store.lock().unwrap();
-    store.get_mut(&id)?.last_selection = Some(summary.clone());
-    store.save()?;
-    Ok(summary)
+    match &result {
+        Ok(s) => {
+            let body = format!("{name}: {} in the selection folder.", plural(s.copied + s.already_there, "photo"));
+            background::job_finished(&app, "Client selection ready", &body);
+        }
+        Err(e) => background::job_finished(&app, "Couldn't copy the selection", &format!("{name}: {e}")),
+    }
+    result
 }
 
 /// Moves the RAW, JPG and selection folders to the Trash and forgets the project.
 #[tauri::command]
 fn delete_project(state: State<AppState>, id: String) -> Result<(), String> {
-    if state.converting.lock().unwrap().contains(&id) {
-        return Err("Wait for the conversion to finish before deleting the project.".into());
+    if state.converting.lock().unwrap().contains(&id) || state.applying.lock().unwrap().contains(&id) {
+        return Err("Wait for the conversion or copy to finish before deleting the project.".into());
     }
     let mut store = state.store.lock().unwrap();
     let project = store.get(&id)?.clone();
@@ -170,9 +205,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
+        .menu(background::menu)
+        .on_menu_event(background::on_menu_event)
+        .on_window_event(background::on_window_event)
         .setup(|app| {
             let path = app.path().app_data_dir()?.join("projects.json");
-            app.manage(AppState { store: Mutex::new(Store::load(path)), converting: Mutex::default() });
+            app.manage(AppState {
+                store: Mutex::new(Store::load(path)),
+                converting: Mutex::default(),
+                applying: Mutex::default(),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -187,6 +230,7 @@ pub fn run() {
             open_folder,
             open_url,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Pixieflow");
+        .build(tauri::generate_context!())
+        .expect("error while starting Pixieflow")
+        .run(background::on_run_event);
 }

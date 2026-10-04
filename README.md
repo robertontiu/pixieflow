@@ -28,6 +28,10 @@ between launches, since the client can take a while.
    Any notes the client left on a photo are written into an XMP sidecar, so
    they show up in Lightroom as the photo's caption.
 
+Closing the window (or pressing Cmd+Q) while a conversion or copy is running
+doesn't stop it. The app keeps working in the background, sends a notification
+when it's done, and then quits.
+
 **Delete project** moves all three folders (RAW, JPG and selection) to the Trash.
 
 ```
