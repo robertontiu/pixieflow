@@ -1,6 +1,7 @@
 mod background;
 mod convert;
 mod files;
+mod imageio;
 mod project;
 mod selection;
 #[cfg(test)]

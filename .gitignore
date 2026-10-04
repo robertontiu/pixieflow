@@ -7,3 +7,9 @@ src-tauri/gen/
 # Local/personal files — client exports contain names and emails
 *.csv
 .envrc
+
+# Sample camera files used for local testing
+*.CR3
+*.cr3
+*.CR2
+*.cr2

@@ -1,5 +1,5 @@
 //! End-to-end run of the whole flow on a throwaway folder. The "RAWs" are
-//! JPEGs with a RAW extension — `sips` reads by content, so that's enough.
+//! JPEGs with a RAW extension — ImageIO reads by content, so that's enough.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -101,4 +101,38 @@ fn refuses_dangerous_folders() {
     fs::create_dir_all(&card).unwrap();
     let err = store.draft(&card).err().unwrap();
     assert!(err.contains("memory card"), "{err}");
+}
+
+/// Runs against a real camera file if one is dropped in the repo root
+/// (RAWs are git-ignored, so this is skipped on a fresh checkout).
+#[test]
+fn converts_real_raw_from_embedded_preview() {
+    let root = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/.."));
+    let Some(raw) = fs::read_dir(root).unwrap().flatten().map(|e| e.path()).find(|p| crate::files::is_raw(p)) else {
+        eprintln!("no sample RAW in the repo root, skipping");
+        return;
+    };
+    let dir = temp_dir("real");
+    let shoot = dir.join("shoot");
+    fs::create_dir_all(&shoot).unwrap();
+    for i in 0..20 {
+        fs::copy(&raw, shoot.join(format!("IMG_{i:04}.CR3"))).unwrap();
+    }
+    let jpgs = dir.join("jpg");
+
+    let start = std::time::Instant::now();
+    let summary = convert::convert(&shoot, &jpgs, |_, _| {}).unwrap();
+    let elapsed = start.elapsed();
+    assert_eq!((summary.converted, summary.failed.len()), (20, 0));
+
+    let out = Command::new("/usr/bin/sips")
+        .args(["-g", "pixelWidth", "-g", "pixelHeight", "-g", "profile"])
+        .arg(jpgs.join("IMG_0000.jpg"))
+        .output()
+        .unwrap();
+    let info = String::from_utf8_lossy(&out.stdout);
+    eprintln!("20 photos in {elapsed:?}\n{info}");
+    assert!(info.contains("pixelWidth: 2048") || info.contains("pixelHeight: 2048"), "{info}");
+    assert!(info.contains("sRGB"), "{info}");
+    fs::remove_dir_all(dir).unwrap();
 }

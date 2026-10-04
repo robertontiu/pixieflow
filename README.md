@@ -18,9 +18,12 @@ Each shoot is a **project**. She picks the folder she copied the RAWs into, and
 the app keeps track of it until the client has chosen. Projects are remembered
 between launches, since the client can take a while.
 
-1. **Convert to JPG.** Every RAW in the folder (subfolders included) is converted
-   to a 1080px JPG with macOS's built-in `sips`, into a `<folder> - JPG` folder
-   next to the original. If she quits halfway, it picks up where it stopped.
+1. **Convert to JPG.** Every RAW in the folder (subfolders included) becomes a
+   2048px JPG in a `<folder> - JPG` folder next to the original. Canon CR3s
+   contain a full-size JPEG the camera rendered, so the app downscales that
+   instead of decoding the RAW: a whole shoot takes seconds, and the proofs
+   look like they did on the camera's screen. Files without a big enough
+   preview fall back to a full RAW decode.
 2. **Upload to Pixieset.** Buttons open the JPG folder and Pixieset so she can
    drag the photos in. Pixieset has no public API, so this step stays manual.
 3. **Client's selection.** She drops the favorites CSV exported from Pixieset
@@ -59,7 +62,7 @@ You need Node, Rust and Xcode's command line tools.
 ```sh
 npm install
 npm run tauri dev               # run the app
-cd src-tauri && cargo test      # run the backend tests
+cd src-tauri && cargo test      # run the backend tests (drop a .CR3 in the repo root to also test a real file)
 ```
 
 The backend in `src-tauri/src/` does the actual work:
@@ -67,7 +70,8 @@ The backend in `src-tauri/src/` does the actual work:
 | File | What it does |
 | --- | --- |
 | `files.rs` | finds RAW files and matches them by name |
-| `convert.rs` | RAW → JPG conversion with `sips`, in parallel |
+| `convert.rs` | RAW → JPG conversion, in parallel |
+| `imageio.rs` | makes the web-sized JPG from the camera's preview via macOS ImageIO |
 | `selection.rs` | reads the Pixieset CSV, copies the picks, writes the XMP captions |
 | `project.rs` | projects, where they're saved, and the safety checks on which folders can be used |
 

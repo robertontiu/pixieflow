@@ -1,10 +1,8 @@
-//! RAW → JPG conversion using macOS's built-in `sips`: longest edge 1080px,
-//! JPEG quality 100.
+//! RAW → JPG conversion for the Pixieset proofing gallery.
 
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::thread;
@@ -13,8 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::files::{scan_raws, stem_key};
 
-const MAX_DIM: &str = "1080";
-const JPEG_QUALITY: &str = "100";
+/// Longest edge in pixels. Sharp full-screen on most laptops and monitors,
+/// without uploading 24MP files.
+const MAX_EDGE: u32 = 2048;
+/// Visually indistinguishable from 1.0 at about a third of the file size.
+const JPEG_QUALITY: f64 = 0.9;
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +33,7 @@ pub struct ConvertSummary {
     pub converted: usize,
     /// Photos that already had a JPG from an earlier run.
     pub already_done: usize,
-    /// RAW files `sips` could not convert.
+    /// RAW files that couldn't be read or converted.
     pub failed: Vec<String>,
     /// RAW files skipped because another RAW has the same name
     /// (their JPGs would overwrite each other in Pixieset).
@@ -112,14 +113,7 @@ fn partial_path(jpg: &Path) -> PathBuf {
 /// mid-conversion never leaves a half-written JPG that looks finished.
 fn convert_one(raw: &Path, jpg: &Path) -> bool {
     let partial = partial_path(jpg);
-    let ok = Command::new("/usr/bin/sips")
-        .args(["-s", "format", "jpeg", "-s", "formatOptions", JPEG_QUALITY, "-Z", MAX_DIM])
-        .arg(raw)
-        .arg("--out")
-        .arg(&partial)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    let ok = crate::imageio::web_jpeg(raw, &partial, MAX_EDGE, JPEG_QUALITY);
     if ok && partial.exists() && fs::rename(&partial, jpg).is_ok() {
         return true;
     }
