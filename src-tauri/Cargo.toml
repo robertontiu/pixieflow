@@ -1,6 +1,6 @@
 [package]
 name = "pixieflow"
-version = "0.2.0"
+version = "0.3.0"
 description = "Photo proofing helper: RAW → JPG for Pixieset, then pick the client's RAWs"
 authors = ["Robert Ontiu"]
 edition = "2021"
