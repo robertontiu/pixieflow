@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pixieflow",
+  "version": "0.1.0",
+  "identifier": "com.robertontiu.pixieflow",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Pixieflow",
+        "width": 980,
+        "height": 720,
+        "minWidth": 720,
+        "minHeight": 540,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "Photography",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "11.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVDRDFERDVGQ0Y0NjBGMkUKUldRdUQwYlBYOTNSN0RBb012WG0yK1BQb04zQ3g0b3R6a1QyRkp0aE90TFJ3bFhMQ0pKcWtHS1UK",
+      "endpoints": [
+        "https://github.com/robertontiu/pixieflow/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
